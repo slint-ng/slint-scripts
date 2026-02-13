@@ -6,7 +6,7 @@
 # To have speech on the console use espeakup, fenrir or speechd-up."
 # They can be enabled with the switch-on utility.
 # Didier Spaier didieratslintdotfr November 2017
-# Last updated on 8 March 2024: handle lightdm-slick-greeter. 
+# Last updated on 13 February 2026: add nodm.
 export TEXTDOMAIN=slint-scripts
 if [ "$(id -u)" -ne 0 ]; then
 	gettext "This script should be run as root."; echo
@@ -16,6 +16,7 @@ fi
 [ ! -f /etc/rc.d/rc.4.local ] && echo "#/etc/rc.d/rc.4.local" > /etc/rc.d/rc.4.local
 liste="text "
 [ -x /usr/sbin/lightdm ] && liste="${liste}lightdm "
+[ -x /usr/bin/nodm ] && liste="${liste}nodm "
 [ -x /usr/bin/sddm ] && liste="${liste}sddm "
 listew=" $liste"
 usage() {
@@ -29,6 +30,10 @@ usage() {
 	printf '%s' "         "
 	gettext "can type \"startx\" to start a graphical session."; echo
 	[ -x /usr/sbin/lightdm ] && gettext "lightdm: Light Display Manager, accessible with speech."; echo
+	if [ -x /usr/bin/nodm ]; then
+		printf '%s' "nodm:    "
+		gettext "Automatic login display manager."; echo
+	fi
 	if [ -x /usr/bin/sddm ]; then
 		printf '%s' "sddm:    "
 		gettext "Simple Desktop Display Manager."; echo
@@ -55,6 +60,75 @@ restartornot() {
 	if [ "$answer" = "r" ] || [ "$answer" = "R" ]; then
 		shutdown -r now
 	fi
+}
+nodm_configured() {
+	nodmConfigFile="/etc/nodm.conf"
+	[ ! -f "$nodmConfigFile" ] && return 1
+	grep -q "{user}" "$nodmConfigFile" && return 1
+	return 0
+}
+configure_nodm_user() {
+	nodmConfigFile="/etc/nodm.conf"
+	if [ ! -f "$nodmConfigFile" ]; then
+		gettext "Missing /etc/nodm.conf. nodm was not enabled."; echo
+		return 1
+	fi
+
+	userList=$(awk -F: '
+	$6 ~ /^\/home\// && $7 !~ /(false|nologin)$/ {
+		print $1 ":" $6
+	}' /etc/passwd)
+	if [ -z "$userList" ]; then
+		gettext "No suitable users were found under /home. nodm was not enabled."; echo
+		return 1
+	fi
+
+	gettext "Choose a user for automatic login:"; echo
+	oldIfs=$IFS
+	IFS='
+'
+	userIndex=1
+	for userEntry in $userList; do
+		userName=$(printf '%s' "$userEntry" | cut -d: -f1)
+		printf '%s) %s\n' "$userIndex" "$userName"
+		userIndex=$((userIndex+1))
+	done
+	IFS=$oldIfs
+
+	gettext "Enter a number, or press Enter to abort."; echo
+	read -r userChoice
+	[ -z "$userChoice" ] && return 1
+	case "$userChoice" in
+	*[!0-9]*)
+		gettext "Invalid selection. nodm was not enabled."; echo
+		return 1
+		;;
+	esac
+
+	selectedEntry=$(printf '%s\n' "$userList" | sed -n "${userChoice}p")
+	if [ -z "$selectedEntry" ]; then
+		gettext "Invalid selection. nodm was not enabled."; echo
+		return 1
+	fi
+
+	selectedUser=$(printf '%s' "$selectedEntry" | cut -d: -f1)
+	selectedHome=$(printf '%s' "$selectedEntry" | cut -d: -f2-)
+	tmpFile=$(mktemp) || return 1
+	sed \
+		-e "s@^NODM_USER=.*@NODM_USER='${selectedUser}'@" \
+		-e "s@^NODM_XSESSION=.*@NODM_XSESSION='${selectedHome}/.xinitrc'@" \
+		"$nodmConfigFile" > "$tmpFile" || {
+		rm -f "$tmpFile"
+		return 1
+	}
+	cat "$tmpFile" > "$nodmConfigFile" || {
+		rm -f "$tmpFile"
+		return 1
+	}
+	rm -f "$tmpFile"
+	gettext "Configured nodm user:"
+	printf ' %s\n' "$selectedUser"
+	return 0
 }
 speak() {
 	gettext "If you want speech at login press S then Enter, else just press Enter."; echo
@@ -152,6 +226,42 @@ case $choice in
 		printf '%s ' " $choice "
 		gettext "will be in use on next boot."; echo
 		speak
+		restartornot
+		;;
+	nodm)
+		if ! nodm_configured; then
+			gettext "nodm needs a user configured in /etc/nodm.conf."; echo
+			gettext "Configure nodm now? [y/N]"; echo
+			read -r configureNodm
+			case "$configureNodm" in
+			y|Y)
+				configure_nodm_user || {
+					gettext "nodm was not enabled."; echo
+					exit 1
+				}
+				;;
+			*)
+				gettext "nodm was not enabled."; echo
+				exit 1
+				;;
+			esac
+			if ! nodm_configured; then
+				gettext "nodm configuration is incomplete. nodm was not enabled."; echo
+				exit 1
+			fi
+		fi
+		cp /etc/inittab /etc/inittab.save
+		sed "/:initdefault:/s/.*/id:4:initdefault:/" /etc/inittab.save > /etc/inittab
+		cat <<-"EOF" > /etc/rc.d/rc.4.local
+		#nodm
+		if [ -x /usr/bin/nodm ]; then
+			exec /usr/bin/nodm
+		fi
+		EOF
+		chmod 755 /etc/rc.d/rc.4.local
+		gettext "The display manager"
+		printf '%s ' " $choice "
+		gettext "will be in use on next boot."; echo
 		restartornot
 		;;
 	lxdm)

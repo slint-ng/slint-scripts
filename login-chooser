@@ -16,7 +16,7 @@ fi
 [ ! -f /etc/rc.d/rc.4.local ] && echo "#/etc/rc.d/rc.4.local" > /etc/rc.d/rc.4.local
 liste="text "
 [ -x /usr/sbin/lightdm ] && liste="${liste}lightdm "
-[ -x /usr/bin/nodm ] && liste="${liste}nodm "
+[ -x /usr/sbin/nodm ] && liste="${liste}nodm "
 [ -x /usr/bin/sddm ] && liste="${liste}sddm "
 listew=" $liste"
 usage() {

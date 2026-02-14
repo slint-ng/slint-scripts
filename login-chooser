@@ -260,8 +260,8 @@ case $choice in
 				. /etc/nodm.conf
 				set +a
 			fi
-			exec /usr/sbin/nodm --verbose --stderr --no-syslog
-		fi
+			exec /usr/sbin/nodm
+			fi
 		EOF
 		chmod 755 /etc/rc.d/rc.4.local
 		gettext "The display manager"

@@ -254,14 +254,22 @@ case $choice in
 		sed "/:initdefault:/s/.*/id:4:initdefault:/" /etc/inittab.save > /etc/inittab
 		cat <<-"EOF" > /etc/rc.d/rc.4.local
 		#nodm
+		if [ -x /etc/rc.d/rc.nodm ]; then
+			exec /etc/rc.d/rc.nodm start
+		fi
 		if [ -x /usr/sbin/nodm ]; then
 			if [ -r /etc/nodm.conf ]; then
 				set -a
 				. /etc/nodm.conf
 				set +a
 			fi
-			exec /usr/sbin/nodm
+			mkdir -p /var/log/nodm
+			if [ -f /var/log/nodm/startnodm.log ]; then
+				mv /var/log/nodm/startnodm.log /var/log/nodm/startnodm.log.old
 			fi
+			exec /usr/sbin/nodm --verbose --stderr --no-syslog \
+				>> /var/log/nodm/startnodm.log 2>&1
+		fi
 		EOF
 		chmod 755 /etc/rc.d/rc.4.local
 		gettext "The display manager"

@@ -30,7 +30,7 @@ usage() {
 	printf '%s' "         "
 	gettext "can type \"startx\" to start a graphical session."; echo
 	[ -x /usr/sbin/lightdm ] && gettext "lightdm: Light Display Manager, accessible with speech."; echo
-	if [ -x /usr/bin/nodm ]; then
+	if [ -x /usr/sbin/nodm ]; then
 		printf '%s' "nodm:    "
 		gettext "Automatic login display manager."; echo
 	fi
@@ -254,8 +254,13 @@ case $choice in
 		sed "/:initdefault:/s/.*/id:4:initdefault:/" /etc/inittab.save > /etc/inittab
 		cat <<-"EOF" > /etc/rc.d/rc.4.local
 		#nodm
-		if [ -x /usr/bin/nodm ]; then
-			exec /usr/bin/nodm
+		if [ -x /usr/sbin/nodm ]; then
+			if [ -r /etc/nodm.conf ]; then
+				set -a
+				. /etc/nodm.conf
+				set +a
+			fi
+			exec /usr/sbin/nodm
 		fi
 		EOF
 		chmod 755 /etc/rc.d/rc.4.local

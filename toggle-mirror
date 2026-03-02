@@ -1,0 +1,169 @@
+#!/bin/sh
+# Storm Dragon
+# Written from scratch and put in the public domain.
+export TEXTDOMAIN=slint-scripts
+# shellcheck disable=SC1091
+. gettext.sh
+
+configFile="/etc/slapt-get/slapt-getrc"
+stableUrl="https://slackware.uk/slint/x86_64/slint-15.0/:PREFERRED"
+testingUrl="http://test.slint-ng.org/slint/x86_64/slint-15.0/:PREFERRED"
+stableName=$(gettext "Slint stable mirror (recommended)")
+testingName=$(gettext "Slint testing mirror")
+tempFile=
+
+# shellcheck disable=SC2329
+cleanup() {
+	[ -n "$tempFile" ] && [ -f "$tempFile" ] && rm -f "$tempFile"
+}
+
+print_usage() {
+	gettext -s "Usage: toggle-mirror"
+	gettext -s "This script switches the active Slint repository between the stable mirror and the testing mirror."
+	exit "${1:-0}"
+}
+
+detect_current_mirror() {
+	counts=$(
+		awk -v stableUrl="$stableUrl" -v testingUrl="$testingUrl" '
+		{
+			trimmed = $0
+			sub(/^[[:space:]]+/, "", trimmed)
+			sub(/[[:space:]]+$/, "", trimmed)
+			if (trimmed == "SOURCE=" stableUrl) {
+				stableCount++
+			}
+			if (trimmed == "SOURCE=" testingUrl) {
+				testingCount++
+			}
+		}
+		END {
+			print stableCount + 0, testingCount + 0
+		}' "$configFile"
+	) || return 1
+	# shellcheck disable=SC2086
+	set -- $counts
+	stableCount=$1
+	testingCount=$2
+	if [ "$stableCount" -eq 1 ] && [ "$testingCount" -eq 0 ]; then
+		currentUrl=$stableUrl
+		# shellcheck disable=SC2034
+		currentName=$stableName
+		return 0
+	fi
+	if [ "$stableCount" -eq 0 ] && [ "$testingCount" -eq 1 ]; then
+		currentUrl=$testingUrl
+		# shellcheck disable=SC2034
+		currentName=$testingName
+		return 0
+	fi
+	if [ "$stableCount" -eq 0 ] && [ "$testingCount" -eq 0 ]; then
+		gettext -s "No supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."
+		return 1
+	fi
+	gettext -s "More than one supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."
+	return 1
+}
+
+confirm_testing_switch() {
+	gettext -s "Changing to testing is not recommended unless you know what you are doing."
+	gettext -s "Packages may be in a broken state and could potentially leave your machine unusable."
+	gettext -s "If you are sure you want to continue, please type YES in all caps to continue."
+	read -r answer
+	[ "$answer" = "YES" ]
+}
+
+write_config() {
+	awk -v currentUrl="$currentUrl" -v targetUrl="$targetUrl" '
+		{
+			trimmed = $0
+			sub(/^[[:space:]]+/, "", trimmed)
+			sub(/[[:space:]]+$/, "", trimmed)
+			if (trimmed == "SOURCE=" currentUrl) {
+				print "SOURCE=" targetUrl
+				replaced++
+				next
+			}
+			print
+		}
+		END {
+			if (replaced != 1) {
+				exit 1
+			}
+		}' "$configFile" > "$tempFile"
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+	gettext -s "Please run this script as root."
+	exit
+fi
+
+trap cleanup 0 HUP INT TERM
+
+if [ $# -gt 1 ]; then
+	print_usage 1
+fi
+
+if [ $# -eq 1 ]; then
+	case $1 in
+		-h|--help) print_usage ;;
+		*) print_usage 1 ;;
+	esac
+fi
+
+if [ ! -f "$configFile" ]; then
+	eval_gettext "The file \$configFile does not exist."; echo
+	exit 1
+fi
+
+if ! detect_current_mirror; then
+	exit 1
+fi
+
+if [ "$currentUrl" = "$stableUrl" ]; then
+	gettext -s "Currently you are on the Slint stable mirror."
+	if ! confirm_testing_switch; then
+		gettext -s "No change made."
+		eval_gettext "You are still using the \$currentName: \$currentUrl."; echo
+		exit
+	fi
+	targetUrl=$testingUrl
+	# shellcheck disable=SC2034
+	targetName=$testingName
+else
+	gettext -s "Currently you are on the Slint testing mirror."
+	targetUrl=$stableUrl
+	# shellcheck disable=SC2034
+	targetName=$stableName
+fi
+
+backupFile="$configFile.bak"
+eval_gettext "Creating a backup of \$configFile as \$backupFile."; echo
+if ! cp -a "$configFile" "$backupFile"; then
+	gettext -s "Failed to create a backup of the configuration file."
+	exit 1
+fi
+
+tempFile=$(mktemp "${configFile}.tmp.XXXXXX") || {
+	gettext -s "Failed to create a temporary file."
+	exit 1
+}
+
+eval_gettext "Updating the active Slint mirror in \$configFile."; echo
+if ! write_config; then
+	gettext -s "Failed to update the configuration file."
+	exit 1
+fi
+
+if ! chown --reference="$configFile" "$tempFile" ||
+	! chmod --reference="$configFile" "$tempFile" ||
+	! mv "$tempFile" "$configFile"; then
+	gettext -s "Failed to install the updated configuration file."
+	exit 1
+fi
+tempFile=
+
+eval_gettext "You are now using the \$targetName: \$targetUrl."; echo
+gettext -s "Please run slapt-get -u before installing or upgrading packages."
+
+exit 0

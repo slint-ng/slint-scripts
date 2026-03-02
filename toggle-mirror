@@ -18,8 +18,8 @@ cleanup() {
 }
 
 print_usage() {
-	gettext -s "Usage: toggle-mirror"
-	gettext -s "This script switches the active Slint repository between the stable mirror and the testing mirror."
+	gettext "Usage: toggle-mirror"; echo
+	gettext "This script switches the active Slint repository between the stable mirror and the testing mirror."; echo
 	exit "${1:-0}"
 }
 
@@ -58,17 +58,17 @@ detect_current_mirror() {
 		return 0
 	fi
 	if [ "$stableCount" -eq 0 ] && [ "$testingCount" -eq 0 ]; then
-		gettext -s "No supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."
+		gettext "No supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."; echo
 		return 1
 	fi
-	gettext -s "More than one supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."
+	gettext "More than one supported active Slint mirror was found in /etc/slapt-get/slapt-getrc."; echo
 	return 1
 }
 
 confirm_testing_switch() {
-	gettext -s "Changing to testing is not recommended unless you know what you are doing."
-	gettext -s "Packages may be in a broken state and could potentially leave your machine unusable."
-	gettext -s "If you are sure you want to continue, please type YES in all caps to continue."
+	gettext "Changing to testing is not recommended unless you know what you are doing."; echo
+	gettext "Packages may be in a broken state and could potentially leave your machine unusable."; echo
+	gettext "If you are sure you want to continue, please type YES in all caps to continue."; echo
 	read -r answer
 	[ "$answer" = "YES" ]
 }
@@ -94,7 +94,7 @@ write_config() {
 }
 
 if [ "$(id -u)" -ne 0 ]; then
-	gettext -s "Please run this script as root."
+	gettext "Please run this script as root."; echo
 	exit
 fi
 
@@ -121,9 +121,9 @@ if ! detect_current_mirror; then
 fi
 
 if [ "$currentUrl" = "$stableUrl" ]; then
-	gettext -s "Currently you are on the Slint stable mirror."
+	gettext "Currently you are on the Slint stable mirror."; echo
 	if ! confirm_testing_switch; then
-		gettext -s "No change made."
+		gettext "No change made."; echo
 		eval_gettext "You are still using the \$currentName: \$currentUrl."; echo
 		exit
 	fi
@@ -131,7 +131,7 @@ if [ "$currentUrl" = "$stableUrl" ]; then
 	# shellcheck disable=SC2034
 	targetName=$testingName
 else
-	gettext -s "Currently you are on the Slint testing mirror."
+	gettext "Currently you are on the Slint testing mirror."; echo
 	targetUrl=$stableUrl
 	# shellcheck disable=SC2034
 	targetName=$stableName
@@ -140,30 +140,30 @@ fi
 backupFile="$configFile.bak"
 eval_gettext "Creating a backup of \$configFile as \$backupFile."; echo
 if ! cp -a "$configFile" "$backupFile"; then
-	gettext -s "Failed to create a backup of the configuration file."
+	gettext "Failed to create a backup of the configuration file."; echo
 	exit 1
 fi
 
 tempFile=$(mktemp "${configFile}.tmp.XXXXXX") || {
-	gettext -s "Failed to create a temporary file."
+	gettext "Failed to create a temporary file."; echo
 	exit 1
 }
 
 eval_gettext "Updating the active Slint mirror in \$configFile."; echo
 if ! write_config; then
-	gettext -s "Failed to update the configuration file."
+	gettext "Failed to update the configuration file."; echo
 	exit 1
 fi
 
 if ! chown --reference="$configFile" "$tempFile" ||
 	! chmod --reference="$configFile" "$tempFile" ||
 	! mv "$tempFile" "$configFile"; then
-	gettext -s "Failed to install the updated configuration file."
+	gettext "Failed to install the updated configuration file."; echo
 	exit 1
 fi
 tempFile=
 
 eval_gettext "You are now using the \$targetName: \$targetUrl."; echo
-gettext -s "Please run slapt-get -u before installing or upgrading packages."
+gettext "Please run slapt-get -u before installing or upgrading packages."; echo
 
 exit 0
